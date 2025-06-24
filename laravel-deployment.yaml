@@ -10,6 +10,7 @@ spec:
       storage: 1Gi
 
 ---
+
 apiVersion: apps/v1
 kind: Deployment
 metadata:
@@ -36,22 +37,33 @@ spec:
           command: ["/bin/sh", "-c"]
           args:
             - |
-              apt-get update && apt-get install -y nginx git unzip php-mysql php-curl php-mbstring php-xml php-bcmath php-zip openssh-server &&
-              service nginx start &&
-              git clone https://github.com/SSINAT/Final-Devops.git /var/www/html &&
+              apt-get update && apt-get install -y \
+                nginx git unzip openssh-server libzip-dev libxml2-dev libcurl4-openssl-dev pkg-config libssl-dev libonig-dev && \
+              docker-php-ext-install pdo_mysql mbstring xml zip bcmath curl && \
+              service nginx start && \
+              git clone https://github.com/SSINAT/Final-Devops.git /var/www/html && \
               tail -f /dev/null
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "500m"
+            limits:
+              memory: "1024Mi"
+              cpu: "1000m"
+
         - name: mysql
           image: mysql:8
           env:
             - name: MYSQL_DATABASE
               value: "terrain_booking"
-            - name: terrain_booking
-              value: "terrain_booking"
+            - name: MYSQL_ROOT_PASSWORD
+              value: "Hello@123"
           ports:
             - containerPort: 3306
           volumeMounts:
             - name: mysql-pvc
               mountPath: /var/lib/mysql
+
       volumes:
         - name: laravel-code
           emptyDir: {}
