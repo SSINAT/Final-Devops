@@ -1,0 +1,56 @@
+---
+- name: Laravel Web Server Operations via Kubernetes Pod
+  hosts: localhost
+  vars:
+    pod_name: "laravel-app-664bb4f4ff-4zwq2"   # Replace with actual pod name
+    container_name: "web"
+    project_dir: "/var/www/html"
+    backup_file: "/tmp/db_backup.sql"
+
+  tasks:
+
+    - name: Check for local changes in git
+      shell: |
+        kubectl exec -c {{ container_name }} {{ pod_name }} -- \
+        bash -c "cd {{ project_dir }} && git status --porcelain"
+      register: git_status
+
+    - name: Fail if there are uncommitted changes
+      fail:
+        msg: "Uncommitted changes found, git pull aborted."
+      when: git_status.stdout != ""
+
+    - name: Run git pull
+      shell: |
+        kubectl exec -c {{ container_name }} {{ pod_name }} -- \
+        bash -c "cd {{ project_dir }} && git pull"
+      register: git_pull_result
+
+    - name: Run composer install
+      shell: |
+        kubectl exec -c {{ container_name }} {{ pod_name }} -- \
+        bash -c "cd {{ project_dir }} && composer install --no-interaction --prefer-dist"
+
+    - name: Run npm install and build
+      shell: |
+        kubectl exec -c {{ container_name }} {{ pod_name }} -- \
+        bash -c "cd {{ project_dir }} && npm install && npm run build"
+
+    - name: Ensure .env.testing uses SQLite
+      shell: |
+        kubectl exec -c {{ container_name }} {{ pod_name }} -- \
+        bash -c "cd {{ project_dir }} && cp .env.testing.example .env.testing && sed -i 's/DB_CONNECTION=.*/DB_CONNECTION=sqlite/' .env.testing"
+
+    - name: Run Laravel tests with SQLite
+      shell: |
+        kubectl exec -c {{ container_name }} {{ pod_name }} -- \
+        bash -c "cd {{ project_dir }} && php artisan test --env=testing"
+
+    - name: Backup MySQL database inside the MySQL container
+      shell: |
+        kubectl exec -c mysql {{ pod_name }} -- \
+        bash -c "mysqldump -u root -pHello@123 terrain_booking > {{ backup_file }}"
+
+    - name: Copy MySQL DB backup to local machine
+      shell: |
+        kubectl cp {{ pod_name }}:{{ backup_file }} ./mysql-backup.sql -c mysql
