@@ -1,0 +1,51 @@
+pipeline {
+    agent any
+
+    triggers {
+        pollSCM('H/5 * * * *') // Poll every 5 minutes
+    }
+
+    environment {
+        NOTIFY_EMAIL = "srengty@gmail.com"
+    }
+
+    stages {
+        stage('Checkout') {
+            steps {
+                checkout scm
+            }
+        }
+
+        stage('Build & Test') {
+            steps {
+                sh 'php artisan config:clear'
+                sh 'php artisan test --env=testing'
+            }
+        }
+
+        stage('Deploy') {
+            when {
+                expression { currentBuild.result == null || currentBuild.result == 'SUCCESS' }
+            }
+            steps {
+                sh 'ansible-playbook -i inventory.ini deploy.yml'
+            }
+        }
+    }
+
+    post {
+        failure {
+            script {
+                def committer = sh(script: "git --no-pager show -s --format='%ae' HEAD", returnStdout: true).trim()
+                emailext (
+                    subject: "BUILD FAILED: ${env.JOB_NAME} #${env.BUILD_NUMBER}",
+                    body: """<p>Build Failed on ${env.JOB_NAME} #${env.BUILD_NUMBER}</p>
+                             <p>Committer: ${committer}</p>
+                             <p>See Jenkins for details.</p>""",
+                    to: "${committer}, ${env.NOTIFY_EMAIL}",
+                    mimeType: 'text/html'
+                )
+            }
+        }
+    }
+}
